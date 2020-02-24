@@ -1,0 +1,529 @@
+<div class="blog-content-box">
+    <div class="article-header-box">
+        <div class="article-header">
+            <div class="article-title-box">
+                <h1 class="title-article">Gazebo机器人仿真（八）—— 机器人导航避障仿真</h1>
+            </div>
+            <div class="article-info-box">
+                <div class="article-bar-top">
+                                     <h2><a name="t0"></a><a id="1_0"></a>1.引言</h2>
+<p>  这章我们将介绍如何在Gazebo中实现机器人导航避障的仿真。</p>
+<h2><a name="t1"></a><a id="2_2"></a>2.准备工作</h2>
+<p>（1）安装<a href="http://wiki.ros.org/depthimage_to_laserscan" rel="nofollow">depthimage_to_laserscan功能包</a>，主要功能是将深度图像转化为激光雷达数据。<br>
+（2）安装<a href="http://wiki.ros.org/gmapping/" rel="nofollow">gmapping功能包</a>。<br>
+（3）安装<a href="http://wiki.ros.org/navigation/" rel="nofollow">navigation功能包</a>。</p>
+<h2><a name="t2"></a><a id="3_6"></a>3.导航避障仿真</h2>
+<p>（1）在launch文件夹下创建gmapping_nav.launch</p>
+<pre class="prettyprint"><code class="has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;">&lt;?xml version="1.0"?&gt;
+
+&lt;launch&gt;  
+  &lt;include file="$(find smartcar)/launch/gazebo.launch"&gt; 
+   &lt;/include&gt;
+ &lt;param name="use_sim_time" value="true" /&gt;
+  &lt;!-- Run the depthimage_to_laserscan node --&gt;
+  &lt;node pkg="depthimage_to_laserscan" type="depthimage_to_laserscan" name="depthimage_to_laserscan" output="screen"&gt;
+    &lt;!--输入图像--&gt;
+    &lt;remap from="image" to="/kinect2/qhd/image_depth_rect"/&gt;
+    &lt;!--相关图像的相机信息。通常不需要重新变形，因为camera_info将从与图像相同的命名空间订阅。--&gt;
+    &lt;remap from="camera_info" to="/kinect2/qhd/camera_info" /&gt;
+    &lt;!--输出激光数据的话题--&gt;
+    &lt;remap from="scan" to="/scan" /&gt; 
+   &lt;!--激光扫描的帧id。对于来自具有Z向前的“光学”帧的点云，该值应该被设置为具有X向前和Z向上的相应帧。--&gt;
+   &lt;!-- &lt;param name="output_frame_id" value="/kinect2_depth_frame"/&gt;--&gt;
+    &lt;param name="output_frame_id" value="/sensor_link"/&gt;
+    &lt;!--用于生成激光扫描的像素行数。对于每一列，扫描将返回在图像中垂直居中的那些像素的最小值。--&gt;
+    &lt;param name="scan_height" value="30"/&gt;
+    &lt;!--返回的最小范围（以米为单位）。小于该范围的输出将作为-Inf输出。--&gt;
+    &lt;param name="range_min" value="0.45"/&gt;
+    &lt;!--返回的最大范围（以米为单位）。大于此范围将输出为+ Inf。--&gt;
+    &lt;param name="range_max" value="12.00"/&gt;
+  &lt;/node&gt;
+
+    &lt;!--start gmapping node --&gt;
+    &lt;node pkg="gmapping" type="slam_gmapping" name="simple_gmapping" output="screen"&gt;
+        &lt;param name="map_update_interval" value="5.0"/&gt;  
+        &lt;param name="maxUrange" value="5.0"/&gt; 
+        &lt;param name="maxRange" value="6.0"/&gt; 
+        &lt;param name="sigma" value="0.05"/&gt;  
+        &lt;param name="kernelSize" value="1"/&gt;  
+        &lt;param name="lstep" value="0.05"/&gt;  
+        &lt;param name="astep" value="0.05"/&gt;  
+        &lt;param name="iterations" value="5"/&gt;  
+        &lt;param name="lsigma" value="0.075"/&gt;  
+        &lt;param name="ogain" value="3.0"/&gt;  
+        &lt;param name="lskip" value="0"/&gt;  
+        &lt;param name="minimumScore" value="50"/&gt;  
+        &lt;param name="srr" value="0.1"/&gt;  
+        &lt;param name="srt" value="0.2"/&gt;  
+        &lt;param name="str" value="0.1"/&gt;  
+        &lt;param name="stt" value="0.2"/&gt;  
+        &lt;param name="linearUpdate" value="1.0"/&gt;  
+        &lt;param name="angularUpdate" value="0.5"/&gt;  
+        &lt;param name="temporalUpdate" value="3.0"/&gt;  
+        &lt;param name="resampleThreshold" value="0.5"/&gt;  
+        &lt;param name="particles" value="50"/&gt;  
+        &lt;param name="xmin" value="-5.0"/&gt;  
+        &lt;param name="ymin" value="-5.0"/&gt;  
+        &lt;param name="xmax" value="5.0"/&gt;  
+        &lt;param name="ymax" value="5.0"/&gt;  
+        &lt;param name="delta" value="0.05"/&gt;  
+        &lt;param name="llsamplerange" value="0.01"/&gt;  
+        &lt;param name="llsamplestep" value="0.01"/&gt;  
+        &lt;param name="lasamplerange" value="0.005"/&gt;  
+        &lt;param name="lasamplestep" value="0.005"/&gt;  
+        &lt;param name="base_frame" value="/base_link"/&gt; 
+
+    &lt;/node&gt;
+
+&lt;!-- ××××××××××××××××××××××××××××××××××××××××××××　华丽分割线　××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××　--&gt;
+
+  &lt;!-- 启动 move_base 节点 --&gt;
+  &lt;node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen" clear_params="true"&gt;
+    &lt;rosparam file="$(find smartcar)/nav_config/costmap_common_params.yaml" command="load" ns="global_costmap" /&gt;
+    &lt;rosparam file="$(find smartcar)/nav_config/costmap_common_params.yaml" command="load" ns="local_costmap" /&gt;
+    &lt;rosparam file="$(find smartcar)/nav_config/local_costmap_params.yaml" command="load" /&gt;
+    &lt;rosparam file="$(find smartcar)/nav_config/global_costmap_params.yaml" command="load" /&gt;
+    &lt;rosparam file="$(find smartcar)/nav_config/base_local_planner_params.yaml" command="load" /&gt;
+
+  &lt;/node&gt;
+
+&lt;!-- ××××××××××××××××××××××××××××××××××××××××××××　华丽分割线　××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××　--&gt;  
+
+  &lt;!-- 启动 AMCL 节点 --&gt;
+  &lt;node pkg="amcl" type="amcl" name="amcl" clear_params="true"&gt;
+    &lt;param name="use_map_topic" value="false"/&gt;
+    &lt;!-- Publish scans from best pose at a max of 10 Hz --&gt;
+    &lt;param name="odom_model_type" value="diff"/&gt;
+    &lt;param name="odom_alpha5" value="0.1"/&gt;
+    &lt;param name="gui_publish_rate" value="10.0"/&gt;
+    &lt;param name="laser_max_beams" value="60"/&gt;
+    &lt;param name="laser_max_range" value="12.0"/&gt;
+    &lt;param name="min_particles" value="500"/&gt;
+    &lt;param name="max_particles" value="2000"/&gt;
+    &lt;param name="kld_err" value="0.05"/&gt;
+    &lt;param name="kld_z" value="0.99"/&gt;
+    &lt;param name="odom_alpha1" value="0.2"/&gt;
+    &lt;param name="odom_alpha2" value="0.2"/&gt;
+    &lt;!-- translation std dev, m --&gt;
+    &lt;param name="odom_alpha3" value="0.2"/&gt;
+    &lt;param name="odom_alpha4" value="0.2"/&gt;
+    &lt;param name="laser_z_hit" value="0.5"/&gt;
+    &lt;param name="laser_z_short" value="0.05"/&gt;
+    &lt;param name="laser_z_max" value="0.05"/&gt;
+    &lt;param name="laser_z_rand" value="0.5"/&gt;
+    &lt;param name="laser_sigma_hit" value="0.2"/&gt;
+    &lt;param name="laser_lambda_short" value="0.1"/&gt;
+    &lt;param name="laser_model_type" value="likelihood_field"/&gt;
+    &lt;!-- &lt;param name="laser_model_type" value="beam"/&gt; --&gt;
+    &lt;param name="laser_likelihood_max_dist" value="2.0"/&gt;
+    &lt;param name="update_min_d" value="0.25"/&gt;
+    &lt;param name="update_min_a" value="0.2"/&gt;
+
+    &lt;param name="odom_frame_id" value="odom"/&gt;
+
+    &lt;param name="resample_interval" value="1"/&gt;
+    &lt;!-- Increase tolerance because the computer can get quite busy --&gt;
+    &lt;param name="transform_tolerance" value="1.0"/&gt;
+    &lt;param name="recovery_alpha_slow" value="0.0"/&gt;
+    &lt;param name="recovery_alpha_fast" value="0.0"/&gt;
+    &lt;!-- scan topic --&gt;
+    &lt;remap from="scan" to="scan"/&gt;
+  &lt;/node&gt;
+
+&lt;!-- ××××××××××××××××××××××××××××××××××××××××××××　华丽分割线　××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××　--&gt;
+
+   &lt;include file="$(find smartcar)/launch/display.launch"&gt; 
+    &lt;/include&gt;
+&lt;/launch&gt;
+
+<div class="hljs-button {2}" data-title="复制"></div></code><ul class="pre-numbering" style=""><li style="color: rgb(153, 153, 153);">1</li><li style="color: rgb(153, 153, 153);">2</li><li style="color: rgb(153, 153, 153);">3</li><li style="color: rgb(153, 153, 153);">4</li><li style="color: rgb(153, 153, 153);">5</li><li style="color: rgb(153, 153, 153);">6</li><li style="color: rgb(153, 153, 153);">7</li><li style="color: rgb(153, 153, 153);">8</li><li style="color: rgb(153, 153, 153);">9</li><li style="color: rgb(153, 153, 153);">10</li><li style="color: rgb(153, 153, 153);">11</li><li style="color: rgb(153, 153, 153);">12</li><li style="color: rgb(153, 153, 153);">13</li><li style="color: rgb(153, 153, 153);">14</li><li style="color: rgb(153, 153, 153);">15</li><li style="color: rgb(153, 153, 153);">16</li><li style="color: rgb(153, 153, 153);">17</li><li style="color: rgb(153, 153, 153);">18</li><li style="color: rgb(153, 153, 153);">19</li><li style="color: rgb(153, 153, 153);">20</li><li style="color: rgb(153, 153, 153);">21</li><li style="color: rgb(153, 153, 153);">22</li><li style="color: rgb(153, 153, 153);">23</li><li style="color: rgb(153, 153, 153);">24</li><li style="color: rgb(153, 153, 153);">25</li><li style="color: rgb(153, 153, 153);">26</li><li style="color: rgb(153, 153, 153);">27</li><li style="color: rgb(153, 153, 153);">28</li><li style="color: rgb(153, 153, 153);">29</li><li style="color: rgb(153, 153, 153);">30</li><li style="color: rgb(153, 153, 153);">31</li><li style="color: rgb(153, 153, 153);">32</li><li style="color: rgb(153, 153, 153);">33</li><li style="color: rgb(153, 153, 153);">34</li><li style="color: rgb(153, 153, 153);">35</li><li style="color: rgb(153, 153, 153);">36</li><li style="color: rgb(153, 153, 153);">37</li><li style="color: rgb(153, 153, 153);">38</li><li style="color: rgb(153, 153, 153);">39</li><li style="color: rgb(153, 153, 153);">40</li><li style="color: rgb(153, 153, 153);">41</li><li style="color: rgb(153, 153, 153);">42</li><li style="color: rgb(153, 153, 153);">43</li><li style="color: rgb(153, 153, 153);">44</li><li style="color: rgb(153, 153, 153);">45</li><li style="color: rgb(153, 153, 153);">46</li><li style="color: rgb(153, 153, 153);">47</li><li style="color: rgb(153, 153, 153);">48</li><li style="color: rgb(153, 153, 153);">49</li><li style="color: rgb(153, 153, 153);">50</li><li style="color: rgb(153, 153, 153);">51</li><li style="color: rgb(153, 153, 153);">52</li><li style="color: rgb(153, 153, 153);">53</li><li style="color: rgb(153, 153, 153);">54</li><li style="color: rgb(153, 153, 153);">55</li><li style="color: rgb(153, 153, 153);">56</li><li style="color: rgb(153, 153, 153);">57</li><li style="color: rgb(153, 153, 153);">58</li><li style="color: rgb(153, 153, 153);">59</li><li style="color: rgb(153, 153, 153);">60</li><li style="color: rgb(153, 153, 153);">61</li><li style="color: rgb(153, 153, 153);">62</li><li style="color: rgb(153, 153, 153);">63</li><li style="color: rgb(153, 153, 153);">64</li><li style="color: rgb(153, 153, 153);">65</li><li style="color: rgb(153, 153, 153);">66</li><li style="color: rgb(153, 153, 153);">67</li><li style="color: rgb(153, 153, 153);">68</li><li style="color: rgb(153, 153, 153);">69</li><li style="color: rgb(153, 153, 153);">70</li><li style="color: rgb(153, 153, 153);">71</li><li style="color: rgb(153, 153, 153);">72</li><li style="color: rgb(153, 153, 153);">73</li><li style="color: rgb(153, 153, 153);">74</li><li style="color: rgb(153, 153, 153);">75</li><li style="color: rgb(153, 153, 153);">76</li><li style="color: rgb(153, 153, 153);">77</li><li style="color: rgb(153, 153, 153);">78</li><li style="color: rgb(153, 153, 153);">79</li><li style="color: rgb(153, 153, 153);">80</li><li style="color: rgb(153, 153, 153);">81</li><li style="color: rgb(153, 153, 153);">82</li><li style="color: rgb(153, 153, 153);">83</li><li style="color: rgb(153, 153, 153);">84</li><li style="color: rgb(153, 153, 153);">85</li><li style="color: rgb(153, 153, 153);">86</li><li style="color: rgb(153, 153, 153);">87</li><li style="color: rgb(153, 153, 153);">88</li><li style="color: rgb(153, 153, 153);">89</li><li style="color: rgb(153, 153, 153);">90</li><li style="color: rgb(153, 153, 153);">91</li><li style="color: rgb(153, 153, 153);">92</li><li style="color: rgb(153, 153, 153);">93</li><li style="color: rgb(153, 153, 153);">94</li><li style="color: rgb(153, 153, 153);">95</li><li style="color: rgb(153, 153, 153);">96</li><li style="color: rgb(153, 153, 153);">97</li><li style="color: rgb(153, 153, 153);">98</li><li style="color: rgb(153, 153, 153);">99</li><li style="color: rgb(153, 153, 153);">100</li><li style="color: rgb(153, 153, 153);">101</li><li style="color: rgb(153, 153, 153);">102</li><li style="color: rgb(153, 153, 153);">103</li><li style="color: rgb(153, 153, 153);">104</li><li style="color: rgb(153, 153, 153);">105</li><li style="color: rgb(153, 153, 153);">106</li><li style="color: rgb(153, 153, 153);">107</li><li style="color: rgb(153, 153, 153);">108</li><li style="color: rgb(153, 153, 153);">109</li><li style="color: rgb(153, 153, 153);">110</li><li style="color: rgb(153, 153, 153);">111</li><li style="color: rgb(153, 153, 153);">112</li><li style="color: rgb(153, 153, 153);">113</li><li style="color: rgb(153, 153, 153);">114</li><li style="color: rgb(153, 153, 153);">115</li><li style="color: rgb(153, 153, 153);">116</li><li style="color: rgb(153, 153, 153);">117</li><li style="color: rgb(153, 153, 153);">118</li><li style="color: rgb(153, 153, 153);">119</li><li style="color: rgb(153, 153, 153);">120</li><li style="color: rgb(153, 153, 153);">121</li><li style="color: rgb(153, 153, 153);">122</li></ul></pre>
+<p>（2）创建nav_config文件夹，文件夹里包含四个导航配置文件<br>
+（2.1）base_local_planner_params.yaml</p>
+<pre class="prettyprint"><code class="has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;">controller_frequency: 2.0
+recovery_behavior_enabled: false
+clearing_rotation_allowed: false
+
+TrajectoryPlannerROS:
+   max_vel_x: 0.2
+   min_vel_x: 0.05
+   max_vel_y: 0.0  # zero for a differential drive robot
+   min_vel_y: 0.0
+   min_in_place_vel_theta: 0.5
+   escape_vel: -0.1
+   acc_lim_x: 2.5
+   acc_lim_y: 0.0 # zero for a differential drive robot
+   acc_lim_theta: 3.2
+
+   holonomic_robot: false
+
+  
+
+<div class="hljs-button {2}" data-title="复制"></div></code><ul class="pre-numbering" style=""><li style="color: rgb(153, 153, 153);">1</li><li style="color: rgb(153, 153, 153);">2</li><li style="color: rgb(153, 153, 153);">3</li><li style="color: rgb(153, 153, 153);">4</li><li style="color: rgb(153, 153, 153);">5</li><li style="color: rgb(153, 153, 153);">6</li><li style="color: rgb(153, 153, 153);">7</li><li style="color: rgb(153, 153, 153);">8</li><li style="color: rgb(153, 153, 153);">9</li><li style="color: rgb(153, 153, 153);">10</li><li style="color: rgb(153, 153, 153);">11</li><li style="color: rgb(153, 153, 153);">12</li><li style="color: rgb(153, 153, 153);">13</li><li style="color: rgb(153, 153, 153);">14</li><li style="color: rgb(153, 153, 153);">15</li><li style="color: rgb(153, 153, 153);">16</li><li style="color: rgb(153, 153, 153);">17</li><li style="color: rgb(153, 153, 153);">18</li><li style="color: rgb(153, 153, 153);">19</li></ul></pre>
+<p>（2.2）costmap_common_params.yaml</p>
+<pre class="prettyprint"><code class="has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;">obstacle_range: 2.5
+raytrace_range: 3.0
+footprint: [[0.06,0.04], [-0.06,0.04], [-0.06,-0.04], [0.06,-0.04]]
+inflation_radius: 0.15
+max_obstacle_height: 0.6
+min_obstacle_height: 0.0
+observation_sources: scan
+scan: {data_type: LaserScan, topic: /scan, marking: true, clearing: true, expected_update_rate: 0}
+
+<div class="hljs-button {2}" data-title="复制"></div></code><ul class="pre-numbering" style=""><li style="color: rgb(153, 153, 153);">1</li><li style="color: rgb(153, 153, 153);">2</li><li style="color: rgb(153, 153, 153);">3</li><li style="color: rgb(153, 153, 153);">4</li><li style="color: rgb(153, 153, 153);">5</li><li style="color: rgb(153, 153, 153);">6</li><li style="color: rgb(153, 153, 153);">7</li><li style="color: rgb(153, 153, 153);">8</li><li style="color: rgb(153, 153, 153);">9</li></ul></pre>
+<p>（2.3）global_costmap_params.yaml</p>
+<pre class="prettyprint"><code class="has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;">global_costmap:
+ global_frame: /map
+ robot_base_frame: /base_link
+ update_frequency: 5.0
+ publish_frequency: 0.5
+ static_map: true
+ rolling_window: false
+ transform_tolerance: 0.5
+ plugins:
+  - {name: static_layer,            type: "costmap_2d::StaticLayer"}
+  - {name: voxel_layer,             type: "costmap_2d::VoxelLayer"}
+  - {name: inflation_layer,         type: "costmap_2d::InflationLayer"}
+
+<div class="hljs-button {2}" data-title="复制"></div></code><ul class="pre-numbering" style=""><li style="color: rgb(153, 153, 153);">1</li><li style="color: rgb(153, 153, 153);">2</li><li style="color: rgb(153, 153, 153);">3</li><li style="color: rgb(153, 153, 153);">4</li><li style="color: rgb(153, 153, 153);">5</li><li style="color: rgb(153, 153, 153);">6</li><li style="color: rgb(153, 153, 153);">7</li><li style="color: rgb(153, 153, 153);">8</li><li style="color: rgb(153, 153, 153);">9</li><li style="color: rgb(153, 153, 153);">10</li><li style="color: rgb(153, 153, 153);">11</li><li style="color: rgb(153, 153, 153);">12</li><li style="color: rgb(153, 153, 153);">13</li></ul></pre>
+<p>（2.4）local_costmap_params.yaml</p>
+<pre class="prettyprint"><code class="has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;">local_costmap:
+ global_frame: /map
+ robot_base_frame: /base_link
+ update_frequency: 5.0
+ publish_frequency: 2.0
+ static_map: false
+ rolling_window: true
+ width: 4.0
+ height: 4.0
+ resolution: 0.05
+ origin_x: 0
+ origin_y: 0
+ transform_tolerance: 0.5
+ plugins:
+  - {name: voxel_layer,      type: "costmap_2d::VoxelLayer"}
+  - {name: inflation_layer,     type: "costmap_2d::InflationLayer"}
+
+<div class="hljs-button {2}" data-title="复制"></div></code><ul class="pre-numbering" style=""><li style="color: rgb(153, 153, 153);">1</li><li style="color: rgb(153, 153, 153);">2</li><li style="color: rgb(153, 153, 153);">3</li><li style="color: rgb(153, 153, 153);">4</li><li style="color: rgb(153, 153, 153);">5</li><li style="color: rgb(153, 153, 153);">6</li><li style="color: rgb(153, 153, 153);">7</li><li style="color: rgb(153, 153, 153);">8</li><li style="color: rgb(153, 153, 153);">9</li><li style="color: rgb(153, 153, 153);">10</li><li style="color: rgb(153, 153, 153);">11</li><li style="color: rgb(153, 153, 153);">12</li><li style="color: rgb(153, 153, 153);">13</li><li style="color: rgb(153, 153, 153);">14</li><li style="color: rgb(153, 153, 153);">15</li><li style="color: rgb(153, 153, 153);">16</li><li style="color: rgb(153, 153, 153);">17</li></ul></pre>
+<p>（3）在config文件夹下创建nav.rviz文件，这样我们就不用每次都要在Rviz界面进行配置。</p>
+<pre class="prettyprint"><code class="has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;">Panels:
+  - Class: rviz/Displays
+    Help Height: 78
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Status1
+        - /Map1
+      Splitter Ratio: 0.5
+    Tree Height: 463
+  - Class: rviz/Selection
+    Name: Selection
+  - Class: rviz/Tool Properties
+    Expanded:
+      - /2D Pose Estimate1
+      - /2D Nav Goal1
+      - /Publish Point1
+    Name: Tool Properties
+    Splitter Ratio: 0.588679016
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+  - Class: rviz/Time
+    Experimental: false
+    Name: Time
+    SyncMode: 0
+    SyncSource: LaserScan
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Line Style:
+        Line Width: 0.0299999993
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 10
+      Reference Frame: &lt;Fixed Frame&gt;
+      Value: true
+    - Alpha: 0.699999988
+      Class: rviz/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
+      Name: Map
+      Topic: /map
+      Unreliable: false
+      Use Timestamp: false
+      Value: true
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        sensor_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel1_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel2_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel3_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel4_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+      Name: RobotModel
+      Robot Description: robot_description
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.300000012
+      Head Length: 0.200000003
+      Length: 0.300000012
+      Line Style: Lines
+      Line Width: 0.0299999993
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.0299999993
+      Shaft Diameter: 0.100000001
+      Shaft Length: 0.100000001
+      Topic: /move_base/NavfnROS/plan
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/LaserScan
+      Color: 255; 255; 255
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: LaserScan
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.00999999978
+      Style: Flat Squares
+      Topic: /scan
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 255; 0
+      Enabled: true
+      Head Diameter: 0.300000012
+      Head Length: 0.200000003
+      Length: 0.300000012
+      Line Style: Lines
+      Line Width: 0.0299999993
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.0299999993
+      Shaft Diameter: 0.100000001
+      Shaft Length: 0.100000001
+      Topic: /move_base/TrajectoryPlannerROS/global_plan
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 0; 0
+      Enabled: true
+      Head Diameter: 0.300000012
+      Head Length: 0.200000003
+      Length: 0.300000012
+      Line Style: Lines
+      Line Width: 0.0299999993
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.0299999993
+      Shaft Diameter: 0.100000001
+      Shaft Length: 0.100000001
+      Topic: /move_base/TrajectoryPlannerROS/local_plan
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.100000001
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.300000012
+      Head Radius: 0.100000001
+      Name: Pose
+      Shaft Length: 1
+      Shaft Radius: 0.0500000007
+      Shape: Arrow
+      Topic: /move_base_simple/goal
+      Unreliable: false
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Default Light: true
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+    - Class: rviz/SetInitialPose
+      Topic: /initialpose
+    - Class: rviz/SetGoal
+      Topic: /move_base_simple/goal
+    - Class: rviz/PublishPoint
+      Single click: true
+      Topic: /clicked_point
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 7.30748844
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.0599999987
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Focal Point:
+        X: 0.237854213
+        Y: 0.181482673
+        Z: -0.296515971
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.0500000007
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.00999999978
+      Pitch: 0.785398006
+      Target Frame: &lt;Fixed Frame&gt;
+      Value: Orbit (rviz)
+      Yaw: 0.785398006
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 744
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd00000004000000000000016a0000025efc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000006100fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c00610079007301000000280000025e000000d700fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f0000025efc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a0056006900650077007301000000280000025e000000ad00fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000005150000003efc0100000002fb0000000800540069006d00650100000000000005150000030000fffffffb0000000800540069006d00650100000000000004500000000000000000000002900000025e00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Selection:
+    collapsed: false
+  Time:
+    collapsed: false
+  Tool Properties:
+    collapsed: false
+  Views:
+    collapsed: false
+  Width: 1301
+  X: 65
+  Y: 24
+
+<div class="hljs-button {2}" data-title="复制"></div></code><ul class="pre-numbering" style=""><li style="color: rgb(153, 153, 153);">1</li><li style="color: rgb(153, 153, 153);">2</li><li style="color: rgb(153, 153, 153);">3</li><li style="color: rgb(153, 153, 153);">4</li><li style="color: rgb(153, 153, 153);">5</li><li style="color: rgb(153, 153, 153);">6</li><li style="color: rgb(153, 153, 153);">7</li><li style="color: rgb(153, 153, 153);">8</li><li style="color: rgb(153, 153, 153);">9</li><li style="color: rgb(153, 153, 153);">10</li><li style="color: rgb(153, 153, 153);">11</li><li style="color: rgb(153, 153, 153);">12</li><li style="color: rgb(153, 153, 153);">13</li><li style="color: rgb(153, 153, 153);">14</li><li style="color: rgb(153, 153, 153);">15</li><li style="color: rgb(153, 153, 153);">16</li><li style="color: rgb(153, 153, 153);">17</li><li style="color: rgb(153, 153, 153);">18</li><li style="color: rgb(153, 153, 153);">19</li><li style="color: rgb(153, 153, 153);">20</li><li style="color: rgb(153, 153, 153);">21</li><li style="color: rgb(153, 153, 153);">22</li><li style="color: rgb(153, 153, 153);">23</li><li style="color: rgb(153, 153, 153);">24</li><li style="color: rgb(153, 153, 153);">25</li><li style="color: rgb(153, 153, 153);">26</li><li style="color: rgb(153, 153, 153);">27</li><li style="color: rgb(153, 153, 153);">28</li><li style="color: rgb(153, 153, 153);">29</li><li style="color: rgb(153, 153, 153);">30</li><li style="color: rgb(153, 153, 153);">31</li><li style="color: rgb(153, 153, 153);">32</li><li style="color: rgb(153, 153, 153);">33</li><li style="color: rgb(153, 153, 153);">34</li><li style="color: rgb(153, 153, 153);">35</li><li style="color: rgb(153, 153, 153);">36</li><li style="color: rgb(153, 153, 153);">37</li><li style="color: rgb(153, 153, 153);">38</li><li style="color: rgb(153, 153, 153);">39</li><li style="color: rgb(153, 153, 153);">40</li><li style="color: rgb(153, 153, 153);">41</li><li style="color: rgb(153, 153, 153);">42</li><li style="color: rgb(153, 153, 153);">43</li><li style="color: rgb(153, 153, 153);">44</li><li style="color: rgb(153, 153, 153);">45</li><li style="color: rgb(153, 153, 153);">46</li><li style="color: rgb(153, 153, 153);">47</li><li style="color: rgb(153, 153, 153);">48</li><li style="color: rgb(153, 153, 153);">49</li><li style="color: rgb(153, 153, 153);">50</li><li style="color: rgb(153, 153, 153);">51</li><li style="color: rgb(153, 153, 153);">52</li><li style="color: rgb(153, 153, 153);">53</li><li style="color: rgb(153, 153, 153);">54</li><li style="color: rgb(153, 153, 153);">55</li><li style="color: rgb(153, 153, 153);">56</li><li style="color: rgb(153, 153, 153);">57</li><li style="color: rgb(153, 153, 153);">58</li><li style="color: rgb(153, 153, 153);">59</li><li style="color: rgb(153, 153, 153);">60</li><li style="color: rgb(153, 153, 153);">61</li><li style="color: rgb(153, 153, 153);">62</li><li style="color: rgb(153, 153, 153);">63</li><li style="color: rgb(153, 153, 153);">64</li><li style="color: rgb(153, 153, 153);">65</li><li style="color: rgb(153, 153, 153);">66</li><li style="color: rgb(153, 153, 153);">67</li><li style="color: rgb(153, 153, 153);">68</li><li style="color: rgb(153, 153, 153);">69</li><li style="color: rgb(153, 153, 153);">70</li><li style="color: rgb(153, 153, 153);">71</li><li style="color: rgb(153, 153, 153);">72</li><li style="color: rgb(153, 153, 153);">73</li><li style="color: rgb(153, 153, 153);">74</li><li style="color: rgb(153, 153, 153);">75</li><li style="color: rgb(153, 153, 153);">76</li><li style="color: rgb(153, 153, 153);">77</li><li style="color: rgb(153, 153, 153);">78</li><li style="color: rgb(153, 153, 153);">79</li><li style="color: rgb(153, 153, 153);">80</li><li style="color: rgb(153, 153, 153);">81</li><li style="color: rgb(153, 153, 153);">82</li><li style="color: rgb(153, 153, 153);">83</li><li style="color: rgb(153, 153, 153);">84</li><li style="color: rgb(153, 153, 153);">85</li><li style="color: rgb(153, 153, 153);">86</li><li style="color: rgb(153, 153, 153);">87</li><li style="color: rgb(153, 153, 153);">88</li><li style="color: rgb(153, 153, 153);">89</li><li style="color: rgb(153, 153, 153);">90</li><li style="color: rgb(153, 153, 153);">91</li><li style="color: rgb(153, 153, 153);">92</li><li style="color: rgb(153, 153, 153);">93</li><li style="color: rgb(153, 153, 153);">94</li><li style="color: rgb(153, 153, 153);">95</li><li style="color: rgb(153, 153, 153);">96</li><li style="color: rgb(153, 153, 153);">97</li><li style="color: rgb(153, 153, 153);">98</li><li style="color: rgb(153, 153, 153);">99</li><li style="color: rgb(153, 153, 153);">100</li><li style="color: rgb(153, 153, 153);">101</li><li style="color: rgb(153, 153, 153);">102</li><li style="color: rgb(153, 153, 153);">103</li><li style="color: rgb(153, 153, 153);">104</li><li style="color: rgb(153, 153, 153);">105</li><li style="color: rgb(153, 153, 153);">106</li><li style="color: rgb(153, 153, 153);">107</li><li style="color: rgb(153, 153, 153);">108</li><li style="color: rgb(153, 153, 153);">109</li><li style="color: rgb(153, 153, 153);">110</li><li style="color: rgb(153, 153, 153);">111</li><li style="color: rgb(153, 153, 153);">112</li><li style="color: rgb(153, 153, 153);">113</li><li style="color: rgb(153, 153, 153);">114</li><li style="color: rgb(153, 153, 153);">115</li><li style="color: rgb(153, 153, 153);">116</li><li style="color: rgb(153, 153, 153);">117</li><li style="color: rgb(153, 153, 153);">118</li><li style="color: rgb(153, 153, 153);">119</li><li style="color: rgb(153, 153, 153);">120</li><li style="color: rgb(153, 153, 153);">121</li><li style="color: rgb(153, 153, 153);">122</li><li style="color: rgb(153, 153, 153);">123</li><li style="color: rgb(153, 153, 153);">124</li><li style="color: rgb(153, 153, 153);">125</li><li style="color: rgb(153, 153, 153);">126</li><li style="color: rgb(153, 153, 153);">127</li><li style="color: rgb(153, 153, 153);">128</li><li style="color: rgb(153, 153, 153);">129</li><li style="color: rgb(153, 153, 153);">130</li><li style="color: rgb(153, 153, 153);">131</li><li style="color: rgb(153, 153, 153);">132</li><li style="color: rgb(153, 153, 153);">133</li><li style="color: rgb(153, 153, 153);">134</li><li style="color: rgb(153, 153, 153);">135</li><li style="color: rgb(153, 153, 153);">136</li><li style="color: rgb(153, 153, 153);">137</li><li style="color: rgb(153, 153, 153);">138</li><li style="color: rgb(153, 153, 153);">139</li><li style="color: rgb(153, 153, 153);">140</li><li style="color: rgb(153, 153, 153);">141</li><li style="color: rgb(153, 153, 153);">142</li><li style="color: rgb(153, 153, 153);">143</li><li style="color: rgb(153, 153, 153);">144</li><li style="color: rgb(153, 153, 153);">145</li><li style="color: rgb(153, 153, 153);">146</li><li style="color: rgb(153, 153, 153);">147</li><li style="color: rgb(153, 153, 153);">148</li><li style="color: rgb(153, 153, 153);">149</li><li style="color: rgb(153, 153, 153);">150</li><li style="color: rgb(153, 153, 153);">151</li><li style="color: rgb(153, 153, 153);">152</li><li style="color: rgb(153, 153, 153);">153</li><li style="color: rgb(153, 153, 153);">154</li><li style="color: rgb(153, 153, 153);">155</li><li style="color: rgb(153, 153, 153);">156</li><li style="color: rgb(153, 153, 153);">157</li><li style="color: rgb(153, 153, 153);">158</li><li style="color: rgb(153, 153, 153);">159</li><li style="color: rgb(153, 153, 153);">160</li><li style="color: rgb(153, 153, 153);">161</li><li style="color: rgb(153, 153, 153);">162</li><li style="color: rgb(153, 153, 153);">163</li><li style="color: rgb(153, 153, 153);">164</li><li style="color: rgb(153, 153, 153);">165</li><li style="color: rgb(153, 153, 153);">166</li><li style="color: rgb(153, 153, 153);">167</li><li style="color: rgb(153, 153, 153);">168</li><li style="color: rgb(153, 153, 153);">169</li><li style="color: rgb(153, 153, 153);">170</li><li style="color: rgb(153, 153, 153);">171</li><li style="color: rgb(153, 153, 153);">172</li><li style="color: rgb(153, 153, 153);">173</li><li style="color: rgb(153, 153, 153);">174</li><li style="color: rgb(153, 153, 153);">175</li><li style="color: rgb(153, 153, 153);">176</li><li style="color: rgb(153, 153, 153);">177</li><li style="color: rgb(153, 153, 153);">178</li><li style="color: rgb(153, 153, 153);">179</li><li style="color: rgb(153, 153, 153);">180</li><li style="color: rgb(153, 153, 153);">181</li><li style="color: rgb(153, 153, 153);">182</li><li style="color: rgb(153, 153, 153);">183</li><li style="color: rgb(153, 153, 153);">184</li><li style="color: rgb(153, 153, 153);">185</li><li style="color: rgb(153, 153, 153);">186</li><li style="color: rgb(153, 153, 153);">187</li><li style="color: rgb(153, 153, 153);">188</li><li style="color: rgb(153, 153, 153);">189</li><li style="color: rgb(153, 153, 153);">190</li><li style="color: rgb(153, 153, 153);">191</li><li style="color: rgb(153, 153, 153);">192</li><li style="color: rgb(153, 153, 153);">193</li><li style="color: rgb(153, 153, 153);">194</li><li style="color: rgb(153, 153, 153);">195</li><li style="color: rgb(153, 153, 153);">196</li><li style="color: rgb(153, 153, 153);">197</li><li style="color: rgb(153, 153, 153);">198</li><li style="color: rgb(153, 153, 153);">199</li><li style="color: rgb(153, 153, 153);">200</li><li style="color: rgb(153, 153, 153);">201</li><li style="color: rgb(153, 153, 153);">202</li><li style="color: rgb(153, 153, 153);">203</li><li style="color: rgb(153, 153, 153);">204</li><li style="color: rgb(153, 153, 153);">205</li><li style="color: rgb(153, 153, 153);">206</li><li style="color: rgb(153, 153, 153);">207</li><li style="color: rgb(153, 153, 153);">208</li><li style="color: rgb(153, 153, 153);">209</li><li style="color: rgb(153, 153, 153);">210</li><li style="color: rgb(153, 153, 153);">211</li><li style="color: rgb(153, 153, 153);">212</li><li style="color: rgb(153, 153, 153);">213</li><li style="color: rgb(153, 153, 153);">214</li><li style="color: rgb(153, 153, 153);">215</li><li style="color: rgb(153, 153, 153);">216</li><li style="color: rgb(153, 153, 153);">217</li><li style="color: rgb(153, 153, 153);">218</li><li style="color: rgb(153, 153, 153);">219</li><li style="color: rgb(153, 153, 153);">220</li><li style="color: rgb(153, 153, 153);">221</li><li style="color: rgb(153, 153, 153);">222</li><li style="color: rgb(153, 153, 153);">223</li><li style="color: rgb(153, 153, 153);">224</li><li style="color: rgb(153, 153, 153);">225</li><li style="color: rgb(153, 153, 153);">226</li><li style="color: rgb(153, 153, 153);">227</li><li style="color: rgb(153, 153, 153);">228</li><li style="color: rgb(153, 153, 153);">229</li><li style="color: rgb(153, 153, 153);">230</li><li style="color: rgb(153, 153, 153);">231</li><li style="color: rgb(153, 153, 153);">232</li><li style="color: rgb(153, 153, 153);">233</li><li style="color: rgb(153, 153, 153);">234</li><li style="color: rgb(153, 153, 153);">235</li><li style="color: rgb(153, 153, 153);">236</li><li style="color: rgb(153, 153, 153);">237</li><li style="color: rgb(153, 153, 153);">238</li><li style="color: rgb(153, 153, 153);">239</li><li style="color: rgb(153, 153, 153);">240</li><li style="color: rgb(153, 153, 153);">241</li><li style="color: rgb(153, 153, 153);">242</li><li style="color: rgb(153, 153, 153);">243</li><li style="color: rgb(153, 153, 153);">244</li><li style="color: rgb(153, 153, 153);">245</li><li style="color: rgb(153, 153, 153);">246</li><li style="color: rgb(153, 153, 153);">247</li><li style="color: rgb(153, 153, 153);">248</li><li style="color: rgb(153, 153, 153);">249</li><li style="color: rgb(153, 153, 153);">250</li><li style="color: rgb(153, 153, 153);">251</li><li style="color: rgb(153, 153, 153);">252</li><li style="color: rgb(153, 153, 153);">253</li><li style="color: rgb(153, 153, 153);">254</li><li style="color: rgb(153, 153, 153);">255</li><li style="color: rgb(153, 153, 153);">256</li><li style="color: rgb(153, 153, 153);">257</li><li style="color: rgb(153, 153, 153);">258</li><li style="color: rgb(153, 153, 153);">259</li><li style="color: rgb(153, 153, 153);">260</li><li style="color: rgb(153, 153, 153);">261</li><li style="color: rgb(153, 153, 153);">262</li><li style="color: rgb(153, 153, 153);">263</li><li style="color: rgb(153, 153, 153);">264</li><li style="color: rgb(153, 153, 153);">265</li><li style="color: rgb(153, 153, 153);">266</li><li style="color: rgb(153, 153, 153);">267</li><li style="color: rgb(153, 153, 153);">268</li><li style="color: rgb(153, 153, 153);">269</li><li style="color: rgb(153, 153, 153);">270</li><li style="color: rgb(153, 153, 153);">271</li><li style="color: rgb(153, 153, 153);">272</li><li style="color: rgb(153, 153, 153);">273</li><li style="color: rgb(153, 153, 153);">274</li><li style="color: rgb(153, 153, 153);">275</li><li style="color: rgb(153, 153, 153);">276</li><li style="color: rgb(153, 153, 153);">277</li><li style="color: rgb(153, 153, 153);">278</li><li style="color: rgb(153, 153, 153);">279</li><li style="color: rgb(153, 153, 153);">280</li><li style="color: rgb(153, 153, 153);">281</li><li style="color: rgb(153, 153, 153);">282</li><li style="color: rgb(153, 153, 153);">283</li><li style="color: rgb(153, 153, 153);">284</li><li style="color: rgb(153, 153, 153);">285</li></ul></pre>
+<p>（4）将launch文件夹里的display.launch修改为：</p>
+<pre class="prettyprint"><code class="has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;">&lt;launch&gt;
+  &lt;arg
+    name="model" /&gt;
+  &lt;arg
+    name="gui"
+    default="true" /&gt;
+  &lt;param
+    name="robot_description"
+    textfile="$(find smartcar)/urdf/smartcar.urdf" /&gt;
+  &lt;param
+    name="use_gui"
+    value="$(arg gui)" /&gt;
+  &lt;node
+    name="joint_state_publisher"
+    pkg="joint_state_publisher"
+    type="joint_state_publisher" /&gt;
+  &lt;node
+    name="robot_state_publisher"
+    pkg="robot_state_publisher"
+    type="state_publisher" /&gt;
+  &lt;node
+    name="rviz"
+    pkg="rviz"
+    type="rviz"
+    args="-d $(find smartcar)/config/nav.rviz" /&gt;
+&lt;/launch&gt;
+
+<div class="hljs-button {2}" data-title="复制"></div></code><ul class="pre-numbering" style=""><li style="color: rgb(153, 153, 153);">1</li><li style="color: rgb(153, 153, 153);">2</li><li style="color: rgb(153, 153, 153);">3</li><li style="color: rgb(153, 153, 153);">4</li><li style="color: rgb(153, 153, 153);">5</li><li style="color: rgb(153, 153, 153);">6</li><li style="color: rgb(153, 153, 153);">7</li><li style="color: rgb(153, 153, 153);">8</li><li style="color: rgb(153, 153, 153);">9</li><li style="color: rgb(153, 153, 153);">10</li><li style="color: rgb(153, 153, 153);">11</li><li style="color: rgb(153, 153, 153);">12</li><li style="color: rgb(153, 153, 153);">13</li><li style="color: rgb(153, 153, 153);">14</li><li style="color: rgb(153, 153, 153);">15</li><li style="color: rgb(153, 153, 153);">16</li><li style="color: rgb(153, 153, 153);">17</li><li style="color: rgb(153, 153, 153);">18</li><li style="color: rgb(153, 153, 153);">19</li><li style="color: rgb(153, 153, 153);">20</li><li style="color: rgb(153, 153, 153);">21</li><li style="color: rgb(153, 153, 153);">22</li><li style="color: rgb(153, 153, 153);">23</li><li style="color: rgb(153, 153, 153);">24</li><li style="color: rgb(153, 153, 153);">25</li><li style="color: rgb(153, 153, 153);">26</li><li style="color: rgb(153, 153, 153);">27</li></ul></pre>
+<p>（5）在终端中运行</p>
+<pre class="prettyprint"><code class="has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;">roslaunch smartcar gmapping_nav.launch
+<div class="hljs-button {2}" data-title="复制"></div></code><ul class="pre-numbering" style=""><li style="color: rgb(153, 153, 153);">1</li></ul></pre>
+<p>（6）在Rviz界面中任意选择目标点，就能规划出路径并控制机器人运动到目标位置。同时可以看到Gazebo仿真环境下的机器人也同时运动。<br>
+<img src="https://img-blog.csdnimg.cn/2019020612372544.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0h1X3dlaWNoZW4=,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>
+<img src="https://img-blog.csdnimg.cn/20190206123738141.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0h1X3dlaWNoZW4=,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>
+<img src="https://img-blog.csdnimg.cn/2019020612375215.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0h1X3dlaWNoZW4=,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
